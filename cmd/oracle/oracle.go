@@ -10,13 +10,23 @@ import (
 	"github.com/republicprotocol/renex-oracle-go/types"
 )
 
-type Currency struct {
-	ID       int32   `json:"id"`
-	symbol   string  `json:"symbol"`
-	ethPrice float64 `json:"ethPrice"`
+type CurrenciesConfig struct {
+	Currencies []Currency `json:"currencies"`
+	Pairs      []Pair     `json:"pairs"`
 }
 
-var currencies []Currency
+type Currency struct {
+	Symbol string `json:"symbol"`
+	ID     int32  `json:"id"`
+}
+
+type Pair struct {
+	FstSymbol string `json:"fstSymbol"`
+	SndSymbol string `json:"sndSymbol"`
+}
+
+var cmcIDs map[string]int32
+var prices map[Pair]float64
 
 func main() {
 	// Load configuration file containing CoinMarketCap currency IDs.
@@ -25,15 +35,22 @@ func main() {
 		log.Println(fmt.Sprintf("cannot load config file: %v", err))
 		return
 	}
-	if err = json.Unmarshal(file, &currencies); err != nil {
+	var config CurrenciesConfig
+	if err = json.Unmarshal(file, &config); err != nil {
 		log.Println(fmt.Sprintf("cannot unmarshal currency data: %v", err))
 		return
 	}
 
-	for i, currency := range currencies {
-		res, err := http.DefaultClient.Get(fmt.Sprintf("https://api.coinmarketcap.com/v2/ticker/%d/?convert=ETH", currency.ID))
+	cmcIDs = make(map[string]int32)
+	for _, currency := range config.Currencies {
+		cmcIDs[currency.Symbol] = currency.ID
+	}
+
+	prices = make(map[Pair]float64)
+	for _, pair := range config.Pairs {
+		res, err := http.DefaultClient.Get(fmt.Sprintf("https://api.coinmarketcap.com/v2/ticker/%d/?convert=%s", cmcIDs[pair.SndSymbol], pair.FstSymbol))
 		if err != nil {
-			log.Println(fmt.Sprintf("cannot get price information for %s: %v", currency.symbol, err))
+			log.Println(fmt.Sprintf("cannot get price information for pair [%s, %s]: %v", pair.FstSymbol, pair.SndSymbol, err))
 			continue
 		}
 		defer res.Body.Close()
@@ -49,8 +66,8 @@ func main() {
 			log.Println(fmt.Sprintf("cannot unmarshal response: %v", err))
 			continue
 		}
-		currencies[i].ethPrice = cmcData.Data.Quotes["ETH"].Price
+		prices[pair] = cmcData.Data.Quotes[pair.FstSymbol].Price
 	}
 
-	log.Println(currencies)
+	log.Println(prices)
 }

@@ -1,10 +1,34 @@
-[
-    {
-        "symbol": "BTC",
-        "id": 1
-    },
-    {
-        "symbol": "ETH",
-        "id": 1027
-    }
-]
+{
+    "currencies": [
+        {
+            "symbol": "BTC",
+            "id": 1
+        },
+        {
+            "symbol": "ETH",
+            "id": 1027
+        },
+        {
+            "symbol": "REN",
+            "id": 2539
+        },
+        {
+            "symbol": "DGX",
+            "id": 2739
+        }
+    ],
+    "pairs": [
+        {
+            "fstSymbol": "BTC",
+            "sndSymbol": "ETH"
+        },
+        {
+            "fstSymbol": "ETH",
+            "sndSymbol": "DGX"
+        },
+        {
+            "fstSymbol": "ETH",
+            "sndSymbol": "REN"
+        }
+    ]
+}
