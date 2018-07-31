@@ -1,9 +1,61 @@
-{
-    "bootstrapMultiAddresses": [
+{  
+    "keystore":{  
+       "id":"1a5f5b3c-3276-429c-abf0-7848c4c81ba0",
+       "version":"3",
+       "ecdsa":{  
+          "address":"0xC8013e9Fa101A96e941B745Eb9129Fd4De4A0C52",
+          "curveParams":{  
+             "b":"Bw==",
+             "bits":256,
+             "n":"/////////////////////rqu3OavSKA7v9JejNA2QUE=",
+             "name":"s256",
+             "p":"/////////////////////////////////////v///C8=",
+             "x":"eb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5g=",
+             "y":"SDradyajxGVdpPv8DhEIqP0XtEimhVQZnEfQj/sQ1Lg="
+          },
+          "d":"8Y42nvtHkbo5/JHakNVFGWW9Xd/lgzrEFJXylNhxViQ=",
+          "x":"RSXvHHiYz3eNBFkPoyvBi7sRrHGoPPTnWTDdJ3WsqdI=",
+          "y":"ZCKzdQ4LkMdqHmMqR/hH1kRj3syvmpz4HILL1OPuxIk="
+       },
+       "rsa":{  
+          "d":"Z0PfQh1QAWYzkqZ0BrvOPE2fuBLWeGm0Z690Id+ogYfftX8v+oGJ91MQbBzZYAqH5qukDMIsvhFZxL1NsWRCdQDiCWb4BvZiBrIddp6NphAlyv+UuToJdKyuJXTZ3zM5latHb1+RXklpauiz/9pax95V87TJoo9X2ZVJl0qER7PtNVzdioLMXCB8KlU2bFJbDLkhQ2QcqYlrw0MWZHV+j70mtnn/84lqPoy8BSSEvHlG55kW1qqFihkAUCcD4YXcsD99ITk52riNXXkgFBITRWgGLj+9hT5/TQdq0rclM20SKVDBASKQbzLKwi9Mwbd3Dj87B2zjDkh9qIH+PQ+czQ==",
+          "e":65537,
+          "n":"uSWwjUd4y3tjUrDbnGiciyxTU2xFeEJCVUm5kVtV70OkSpgHaFeae56X2EHCcfmK1uEK3YJaatGHysRFGggjFSABpAz7BR9ZA/Goa0Qjo2XdhcxMScCjCHtzMCDT7Vmr8yzzCoFcQagTXCkIdQgNLqTyI+tVwO7dgAaFgVzprmq/j+DwlG9WRb0G2SIPv+c/OqrOBnQB5A+IUpzv9NdlsFLQJLkKtORn7s2WQJQ4GvVNKScwh++yvhjClJIaDvVyaEIamhfLYOgnFuUG60MZ2m3ZnDXhAuHbYhF1BSCH0Ycsq+umtXItXgv2bNwAAolIm1WBH1OPEI2yxtTB7ORI9Q==",
+          "primes":[  
+             "zx2SCZAQwAOyVPy9viTDHnZ4fJJxLz6/NhYxlVc0f971XQTorqQnSj/rdK+QjnwmYQG6wICQ0pixfmPJ+Qp6QHdGQO28n9F5ZHMO8CerNtY/qkP6wjxr+fD97cJmyeEsghCwshAq/nqQAZNppJ6ybugGbU8Jd88oMMwkn5zOtWs=",
+             "5Ni9xqTlHl9BLFU4mr15VltaOzv8tyNrMRHMAxiI+HPc6ShIfsOdAZz9TQKdYkaDw9QcEa3QX5Ir4Wz7VqrzLZWZumskzudqRwcLet8BCQ5eVIDjEQNu3cSmwCY+D2n38pQ000gVylAF9+HQxaBcuXVMMm967+T5X6errnsoMx8="
+          ]
+       }
+    },
+    "ethereum":{  
+       "network":"nightly",
+       "uri":"https://kovan.infura.io",
+       "republicTokenAddress":"",
+       "darknodeRegistryAddress":"",
+       "orderbookAddress":"",
+       "rewardVaultAddress":"",
+       "renExBalancesAddress":"",
+       "renExSettlementAddress":""
+    },
+    "logs":{  
+       "plugins":[  
+          {  
+             "file":{  
+                "path":"/home/ubuntu/.darknode/darknode.out"
+             }
+          }
+       ],
+       "tags":null,
+       "filterLevel":0,
+       "filterEvents":null
+    },
+    "address":"8MJqU9vwduX4yY1NZU89dhADB72DwX",
+    "bootstrapMultiAddresses":[
         "/ip4/54.255.182.246/tcp/18514/republic/8MHgRa2Uj7Tj2cgoA1PoULso7UmgVi",
-        "/ip4/52.62.18.91/tcp/18514/republic/8MJnjSUVJCgP6YVjNWzaJXtiKE3p1o"
+        "/ip4/52.62.18.91/tcp/18514/republic/8MJnjSUVJCgP6YVjNWzaJXtiKE3p1o",
+        "/ip4/52.59.235.50/tcp/18514/republic/8MJJeN5VYNGqZtEiti5aZtzo7g6pgM"
     ],
-    "ethereum": {
-        "network": "nightly"
-    }
-}
+    "host":"0.0.0.0",
+    "port":"18514",
+    "alpha":0
+ }

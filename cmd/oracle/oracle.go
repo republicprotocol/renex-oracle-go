@@ -9,23 +9,15 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/republicprotocol/republic-go/dispatch"
+
 	"github.com/gorilla/mux"
 	"github.com/republicprotocol/renex-oracle-go/types"
-	"github.com/republicprotocol/republic-go/contract"
+	"github.com/republicprotocol/republic-go/cmd/darknode/config"
 	"github.com/republicprotocol/republic-go/grpc"
-	"github.com/republicprotocol/republic-go/identity"
+	"github.com/republicprotocol/republic-go/oracle"
 	"github.com/rs/cors"
 )
-
-type config struct {
-	env        envConfig
-	currencies currenciesConfig
-}
-
-type envConfig struct {
-	Ethereum                contract.Config         `json:"ethereum"`
-	BootstrapMultiAddresses identity.MultiAddresses `json:"bootstrapMultiAddresses"`
-}
 
 type currenciesConfig struct {
 	Currencies []currency `json:"currencies"`
@@ -53,43 +45,35 @@ var cmcIDs map[string]int32
 var prices map[pair]midpointData
 
 func main() {
-	config := config{}
+	var currenciesConfig currenciesConfig
 
 	// Load configuration file containing currency and pair information.
 	file, err := ioutil.ReadFile("currencies/currencies.json")
 	if err != nil {
-		log.Println(fmt.Sprintf("cannot load config file: %v", err))
-		return
+		log.Fatalln(fmt.Sprintf("cannot load config file: %v", err))
 	}
-	if err = json.Unmarshal(file, &config.currencies); err != nil {
-		log.Println(fmt.Sprintf("cannot unmarshal config file: %v", err))
-		return
+	if err = json.Unmarshal(file, &currenciesConfig); err != nil {
+		log.Fatalln(fmt.Sprintf("cannot unmarshal config file: %v", err))
 	}
 
 	// Load configuration file containing environment information.
-	file, err = ioutil.ReadFile(fmt.Sprintf("env/%v/config.json", "nightly")) // TODO: Retrieve network dynamically
+	envConfig, err := config.NewConfigFromJSONFile(fmt.Sprintf("env/%v/config.json", "nightly")) // TODO: Retrieve network dynamically
 	if err != nil {
-		log.Println(fmt.Sprintf("cannot load config file: %v", err))
-		return
-	}
-	if err = json.Unmarshal(file, &config.env); err != nil {
-		log.Println(fmt.Sprintf("cannot unmarshal config file: %v", err))
-		return
+		log.Fatalln(fmt.Sprintf("cannot load config file: %v", err))
 	}
 
 	// Store CMC IDs from config file.
 	cmcIDs = make(map[string]int32)
-	for _, currency := range config.currencies.Currencies {
+	for _, currency := range currenciesConfig.Currencies {
 		cmcIDs[currency.Symbol] = currency.ID
 	}
 
 	// Retrieve price information for each pair within the config file and
 	// propogate to clients.
 	prices = make(map[pair]midpointData)
-	client := grpc.NewOracleClient([]byte{})
 	go func() {
 		for {
-			for _, pair := range config.currencies.Pairs {
+			for _, pair := range currenciesConfig.Pairs {
 				res, err := http.DefaultClient.Get(fmt.Sprintf("https://api.coinmarketcap.com/v2/ticker/%d/?convert=%s", cmcIDs[pair.SndSymbol], pair.FstSymbol))
 				if err != nil {
 					log.Println(fmt.Sprintf("cannot get price information for pair [%s, %s]: %v", pair.FstSymbol, pair.SndSymbol, err))
@@ -113,10 +97,45 @@ func main() {
 					Nonce: uint64(time.Now().Unix()),
 				}
 
-				// Update the midpoint price for the boostrap nodes.
-				for _, multiAddr := range config.env.BootstrapMultiAddresses {
-					client.UpdateMidpoint(context.Background(), multiAddr, 0, prices[pair].Price, prices[pair].Nonce)
+				// Construct midpoint price object and sign.
+				midpointPrice := oracle.MidpointPrice{
+					Tokens: 0, // TODO: Add tokens to config
+					Price:  prices[pair].Price,
+					Nonce:  prices[pair].Nonce,
 				}
+				midpointPrice.Signature, err = envConfig.Keystore.EcdsaKey.Sign(midpointPrice.Hash())
+				if err != nil {
+					log.Println("cannot sign midpoint price data: %v", err)
+					continue
+				}
+
+				// Update the midpoint price for the boostrap nodes.
+				dispatch.CoForAll(envConfig.BootstrapMultiAddresses, func(i int) {
+					multiAddr := envConfig.BootstrapMultiAddresses[i]
+					conn, err := grpc.Dial(context.Background(), multiAddr)
+					if err != nil {
+						log.Println(fmt.Sprintf("cannot dial %v: %v", multiAddr.Address(), err))
+						return
+					}
+					defer conn.Close()
+					client := grpc.NewOracleServiceClient(conn)
+
+					request := grpc.UpdateMidpointRequest{
+						Signature: midpointPrice.Signature,
+						Tokens:    midpointPrice.Tokens,
+						Price:     midpointPrice.Price,
+						Nonce:     midpointPrice.Nonce,
+					}
+
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+
+					_, err = client.UpdateMidpoint(ctx, &request)
+					if err != nil {
+						log.Println(fmt.Sprintf("cannot update midpoint for %v: %v", multiAddr.Address(), err))
+						return
+					}
+				})
 			}
 
 			// Check every 60 seconds.
