@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -10,58 +11,85 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/republicprotocol/renex-oracle-go/types"
+	"github.com/republicprotocol/republic-go/contract"
+	"github.com/republicprotocol/republic-go/grpc"
+	"github.com/republicprotocol/republic-go/identity"
 	"github.com/rs/cors"
 )
 
-type Config struct {
-	Currencies []Currency `json:"currencies"`
-	Pairs      []Pair     `json:"pairs"`
+type config struct {
+	env        envConfig
+	currencies currenciesConfig
 }
 
-type Currency struct {
+type envConfig struct {
+	Ethereum                contract.Config         `json:"ethereum"`
+	BootstrapMultiAddresses identity.MultiAddresses `json:"bootstrapMultiAddresses"`
+}
+
+type currenciesConfig struct {
+	Currencies []currency `json:"currencies"`
+	Pairs      []pair     `json:"pairs"`
+}
+
+type currency struct {
 	Symbol string `json:"symbol"`
 	ID     int32  `json:"id"`
 }
 
-type Pair struct {
+type pair struct {
 	FstSymbol string `json:"fstSymbol"`
 	SndSymbol string `json:"sndSymbol"`
 }
 
-type MidpointData struct {
-	Price float64 `json:"price"`
-	Nonce int64   `json:"nonce"`
+type midpointData struct {
+	Price uint64 `json:"price"`
+	Nonce uint64 `json:"nonce"`
 }
 
 const port int = 3000
 
 var cmcIDs map[string]int32
-var prices map[Pair]MidpointData
+var prices map[pair]midpointData
 
 func main() {
+	config := config{}
+
 	// Load configuration file containing currency and pair information.
 	file, err := ioutil.ReadFile("currencies/currencies.json")
 	if err != nil {
 		log.Println(fmt.Sprintf("cannot load config file: %v", err))
 		return
 	}
-	var config Config
-	if err = json.Unmarshal(file, &config); err != nil {
-		log.Println(fmt.Sprintf("cannot unmarshal currency data: %v", err))
+	if err = json.Unmarshal(file, &config.currencies); err != nil {
+		log.Println(fmt.Sprintf("cannot unmarshal config file: %v", err))
 		return
 	}
 
-	go func() {
-		// Store CMC IDs from config file.
-		cmcIDs = make(map[string]int32)
-		for _, currency := range config.Currencies {
-			cmcIDs[currency.Symbol] = currency.ID
-		}
+	// Load configuration file containing environment information.
+	file, err = ioutil.ReadFile(fmt.Sprintf("env/%v/config.json", "nightly")) // TODO: Retrieve network dynamically
+	if err != nil {
+		log.Println(fmt.Sprintf("cannot load config file: %v", err))
+		return
+	}
+	if err = json.Unmarshal(file, &config.env); err != nil {
+		log.Println(fmt.Sprintf("cannot unmarshal config file: %v", err))
+		return
+	}
 
-		// Retrieve and store price information for each pair within the config file.
-		prices = make(map[Pair]MidpointData)
+	// Store CMC IDs from config file.
+	cmcIDs = make(map[string]int32)
+	for _, currency := range config.currencies.Currencies {
+		cmcIDs[currency.Symbol] = currency.ID
+	}
+
+	// Retrieve price information for each pair within the config file and
+	// propogate to clients.
+	prices = make(map[pair]midpointData)
+	client := grpc.NewOracleClient([]byte{})
+	go func() {
 		for {
-			for _, pair := range config.Pairs {
+			for _, pair := range config.currencies.Pairs {
 				res, err := http.DefaultClient.Get(fmt.Sprintf("https://api.coinmarketcap.com/v2/ticker/%d/?convert=%s", cmcIDs[pair.SndSymbol], pair.FstSymbol))
 				if err != nil {
 					log.Println(fmt.Sprintf("cannot get price information for pair [%s, %s]: %v", pair.FstSymbol, pair.SndSymbol, err))
@@ -80,12 +108,16 @@ func main() {
 					log.Println(fmt.Sprintf("cannot unmarshal response: %v", err))
 					continue
 				}
-				prices[pair] = MidpointData{
-					Price: cmcData.Data.Quotes[pair.FstSymbol].Price,
-					Nonce: time.Now().Unix(),
+				prices[pair] = midpointData{
+					Price: uint64(cmcData.Data.Quotes[pair.FstSymbol].Price), // TODO: Fix price conversion
+					Nonce: uint64(time.Now().Unix()),
+				}
+
+				// Update the midpoint price for the boostrap nodes.
+				for _, multiAddr := range config.env.BootstrapMultiAddresses {
+					client.UpdateMidpoint(context.Background(), multiAddr, 0, prices[pair].Price, prices[pair].Nonce)
 				}
 			}
-			log.Println(prices)
 
 			// Check every 60 seconds.
 			time.Sleep(60 * time.Second) // TODO: Reduce wait time
@@ -106,7 +138,8 @@ func main() {
 
 	log.Printf("listening on port %v...", port)
 	if err := http.ListenAndServe(fmt.Sprintf(":%v", port), handler); err != nil {
-		log.Fatalln(fmt.Sprintf("cannot listen on port %v: %v", port, err))
+		log.Println(fmt.Sprintf("cannot listen on port %v: %v", port, err))
+		return
 	}
 }
 
@@ -127,7 +160,7 @@ func serveResponse(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Construct pair object.
-		pair := Pair{
+		pair := pair{
 			FstSymbol: fstSymbol,
 			SndSymbol: sndSymbol,
 		}
