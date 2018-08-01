@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/republicprotocol/republic-go/crypto"
 	"github.com/republicprotocol/republic-go/dispatch"
+	"github.com/republicprotocol/republic-go/identity"
 
 	"github.com/gorilla/mux"
 	"github.com/republicprotocol/renex-oracle-go/types"
@@ -20,24 +22,28 @@ import (
 	"github.com/rs/cors"
 )
 
-type CurrencyPair struct {
+type currencyPair struct {
 	fstSymbol string
 	sndSymbol string
 }
 
 const port int = 3000
 
-var cmcIDs map[string]int32
-var prices map[CurrencyPair]float64
+var (
+	cmcIDs map[string]int32         // Map of a token symbol to its CMC ID
+	prices map[currencyPair]float64 // Map of a currency pair to its latest price
+)
 
 func main() {
-	var currenciesConfig types.Config
+	cmcIDs = make(map[string]int32)
+	prices = make(map[currencyPair]float64)
 
 	// Load configuration file containing currency and pair information.
 	file, err := ioutil.ReadFile("currencies/currencies.json")
 	if err != nil {
 		log.Fatalln(fmt.Sprintf("cannot load config file: %v", err))
 	}
+	var currenciesConfig types.Config
 	if err = json.Unmarshal(file, &currenciesConfig); err != nil {
 		log.Fatalln(fmt.Sprintf("cannot unmarshal config file: %v", err))
 	}
@@ -49,87 +55,40 @@ func main() {
 	}
 
 	// Store CMC IDs from config file.
-	cmcIDs = make(map[string]int32)
 	for _, currency := range currenciesConfig.Currencies {
-		cmcIDs[currency.Symbol] = currency.ID
+		cmcIDs[currency.Symbol] = currency.CmcID
 	}
 
 	// Retrieve price information for each pair within the config file and
 	// propogate to clients.
-	prices = make(map[CurrencyPair]float64)
 	go func() {
 		for {
 			for _, configPair := range currenciesConfig.Pairs {
-				res, err := http.DefaultClient.Get(fmt.Sprintf("https://api.coinmarketcap.com/v2/ticker/%d/?convert=%s", cmcIDs[configPair.SndSymbol], configPair.FstSymbol))
+				// Retrieve price information for a given token.
+				price, err := retrievePrice(configPair.FstSymbol, configPair.SndSymbol)
 				if err != nil {
-					log.Println(fmt.Sprintf("cannot get price information for pair [%s, %s]: %v", configPair.FstSymbol, configPair.SndSymbol, err))
-					continue
-				}
-				defer res.Body.Close()
-
-				cmcDataBytes, err := ioutil.ReadAll(res.Body)
-				if err != nil {
-					log.Println(fmt.Sprintf("cannot read response: %v", err))
-					continue
-				}
-
-				var cmcData types.TickerResponse
-				if err = json.Unmarshal(cmcDataBytes, &cmcData); err != nil {
-					log.Println(fmt.Sprintf("cannot unmarshal response: %v", err))
+					log.Println(err)
 					continue
 				}
 
 				// Store price for GET requests.
-				pair := CurrencyPair{
+				pair := currencyPair{
 					fstSymbol: configPair.FstSymbol,
 					sndSymbol: configPair.SndSymbol,
 				}
-				price := cmcData.Data.Quotes[configPair.FstSymbol].Price
 				prices[pair] = price
 
-				// Construct midpoint price object and sign.
-				midpointPrice := oracle.MidpointPrice{
-					Tokens: configPair.PairCode,
-					Price:  uint64(price * math.Pow10(12)),
-					Nonce:  uint64(time.Now().Unix()),
-				}
-				midpointPrice.Signature, err = envConfig.Keystore.EcdsaKey.Sign(midpointPrice.Hash())
+				// Send price information to bootstrap nodes.
+				request, err := sendPriceToDarknodes(configPair, price, envConfig.BootstrapMultiAddresses, envConfig.Keystore)
 				if err != nil {
-					log.Println(fmt.Sprintf("cannot sign midpoint price data: %v", err))
+					log.Println(err)
 					continue
 				}
-
-				// Update the midpoint price for the boostrap nodes.
-				dispatch.CoForAll(envConfig.BootstrapMultiAddresses, func(i int) {
-					multiAddr := envConfig.BootstrapMultiAddresses[i]
-					conn, err := grpc.Dial(context.Background(), multiAddr)
-					if err != nil {
-						log.Println(fmt.Sprintf("cannot dial %v: %v", multiAddr.Address(), err))
-						return
-					}
-					defer conn.Close()
-					client := grpc.NewOracleServiceClient(conn)
-
-					request := grpc.UpdateMidpointRequest{
-						Signature: midpointPrice.Signature,
-						Tokens:    midpointPrice.Tokens,
-						Price:     midpointPrice.Price,
-						Nonce:     midpointPrice.Nonce,
-					}
-
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					defer cancel()
-
-					_, err = client.UpdateMidpoint(ctx, &request)
-					if err != nil {
-						log.Println(fmt.Sprintf("cannot update midpoint for %v: %v", multiAddr.Address(), err))
-						return
-					}
-				})
+				log.Println(fmt.Sprintf("Tokens: %v, Price: %v, Nonce: %v", request.Tokens, request.Price, request.Nonce))
 			}
 
-			// Check every 60 seconds.
-			time.Sleep(60 * time.Second) // TODO: Reduce wait time
+			// Check prices every 5 seconds.
+			time.Sleep(5 * time.Second)
 		}
 	}()
 
@@ -152,6 +111,70 @@ func main() {
 	}
 }
 
+func retrievePrice(fstSymbol, sndSymbol string) (float64, error) {
+	res, err := http.DefaultClient.Get(fmt.Sprintf("https://api.coinmarketcap.com/v2/ticker/%d/?convert=%s", cmcIDs[sndSymbol], fstSymbol))
+	if err != nil {
+		return 0, fmt.Errorf("cannot get price information for pair [%s, %s]: %v", fstSymbol, sndSymbol, err)
+	}
+	defer res.Body.Close()
+
+	cmcDataBytes, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return 0, fmt.Errorf("cannot read response: %v", err)
+	}
+
+	var cmcData types.TickerResponse
+	if err = json.Unmarshal(cmcDataBytes, &cmcData); err != nil {
+		return 0, fmt.Errorf("cannot unmarshal response: %v", err)
+	}
+
+	return cmcData.Data.Quotes[fstSymbol].Price, nil
+}
+
+func sendPriceToDarknodes(configPair types.Pair, price float64, bootstrapMultiAddresses identity.MultiAddresses, keystore crypto.Keystore) (grpc.UpdateMidpointRequest, error) {
+	// Construct midpoint price object and sign.
+	midpointPrice := oracle.MidpointPrice{
+		Tokens: configPair.PairCode,
+		Price:  uint64(price * math.Pow10(12)),
+		Nonce:  uint64(time.Now().Unix()),
+	}
+	var err error
+	midpointPrice.Signature, err = keystore.EcdsaKey.Sign(midpointPrice.Hash())
+	if err != nil {
+		return grpc.UpdateMidpointRequest{}, fmt.Errorf("cannot sign midpoint price data: %v", err)
+	}
+
+	// Construct request object and send the updated midpoint price to the
+	// boostrap nodes.
+	request := grpc.UpdateMidpointRequest{
+		Signature: midpointPrice.Signature,
+		Tokens:    midpointPrice.Tokens,
+		Price:     midpointPrice.Price,
+		Nonce:     midpointPrice.Nonce,
+	}
+	dispatch.CoForAll(bootstrapMultiAddresses, func(i int) {
+		multiAddr := bootstrapMultiAddresses[i]
+		conn, err := grpc.Dial(context.Background(), multiAddr)
+		if err != nil {
+			log.Println(fmt.Sprintf("cannot dial %v: %v", multiAddr.Address(), err))
+			return
+		}
+		defer conn.Close()
+		client := grpc.NewOracleServiceClient(conn)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		_, err = client.UpdateMidpoint(ctx, &request)
+		if err != nil {
+			log.Println(fmt.Sprintf("cannot update midpoint for %v: %v", multiAddr.Address(), err))
+			return
+		}
+	})
+
+	return request, nil
+}
+
 func serveResponse(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
@@ -168,17 +191,12 @@ func serveResponse(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Construct pair object.
-		pair := CurrencyPair{
+		// Construct pair object and retrieve price.
+		pair := currencyPair{
 			fstSymbol: fstSymbol,
 			sndSymbol: sndSymbol,
 		}
 		midpointPrice := prices[pair]
-		if midpointPrice == 0 {
-			w.WriteHeader(500)
-			w.Write([]byte("invalid currency pair"))
-			return
-		}
 
 		// Respond with price.
 		w.WriteHeader(http.StatusOK)

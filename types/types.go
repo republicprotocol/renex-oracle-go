@@ -7,7 +7,7 @@ type Config struct {
 
 type Currency struct {
 	Symbol string `json:"symbol"`
-	ID     int32  `json:"id"`
+	CmcID  int32  `json:"cmcID"`
 }
 
 type Pair struct {
@@ -16,13 +16,13 @@ type Pair struct {
 	PairCode  uint64 `json:"pairCode"`
 }
 
-// Types adapted from https://github.com/CoinCircle/go-coinmarketcap/blob/master/types/types.go
+// CMC types adapted from https://github.com/CoinCircle/go-coinmarketcap/blob/master/types/types.go
 
 type TickerResponse struct {
-	Data     Ticker `json:"data,omitempty"`
+	Data     Ticker `json:"data"`
 	Metadata struct {
 		Timestamp int64
-		Error     string `json:",omitempty"`
+		Error     string `json:"error"`
 	}
 }
 

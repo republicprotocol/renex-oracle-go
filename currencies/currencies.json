@@ -2,19 +2,19 @@
     "currencies": [
         {
             "symbol": "BTC",
-            "id": 1
+            "cmcID": 1
         },
         {
             "symbol": "ETH",
-            "id": 1027
+            "cmcID": 1027
         },
         {
             "symbol": "REN",
-            "id": 2539
+            "cmcID": 2539
         },
         {
             "symbol": "DGX",
-            "id": 2739
+            "cmcID": 2739
         }
     ],
     "pairs": [
