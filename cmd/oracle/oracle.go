@@ -93,8 +93,8 @@ func main() {
 				log.Println(fmt.Sprintf("Tokens: %v, Price: %v, Nonce: %v", request.Tokens, request.Price, request.Nonce))
 			}
 
-			// Check prices every 5 seconds.
-			time.Sleep(5 * time.Second)
+			// Check prices every 10 seconds.
+			time.Sleep(10 * time.Second)
 		}
 	}()
 
@@ -138,48 +138,35 @@ func retrievePrice(fstSymbol, sndSymbol string) (float64, error) {
 	return cmcData.Data.Quotes[fstSymbol].Price, nil
 }
 
-func sendPriceToDarknodes(configPair types.Pair, price float64, bootstrapMultiAddresses identity.MultiAddresses, keystore crypto.Keystore) (grpc.UpdateMidpointRequest, error) {
+func sendPriceToDarknodes(configPair types.Pair, price float64, bootstrapMultiAddresses identity.MultiAddresses, keystore crypto.Keystore) (oracle.MidpointPrice, error) {
 	// Construct midpoint price object and sign.
+	var err error
 	midpointPrice := oracle.MidpointPrice{
 		Tokens: configPair.PairCode,
 		Price:  uint64(price * math.Pow10(12)),
 		Nonce:  uint64(time.Now().Unix()),
 	}
-	var err error
 	midpointPrice.Signature, err = keystore.EcdsaKey.Sign(midpointPrice.Hash())
 	if err != nil {
-		return grpc.UpdateMidpointRequest{}, fmt.Errorf("cannot sign midpoint price data: %v", err)
+		return oracle.MidpointPrice{}, fmt.Errorf("cannot sign midpoint price data: %v", err)
 	}
 
-	// Construct request object and send the updated midpoint price to the
-	// boostrap nodes.
-	request := grpc.UpdateMidpointRequest{
-		Signature: midpointPrice.Signature,
-		Tokens:    midpointPrice.Tokens,
-		Price:     midpointPrice.Price,
-		Nonce:     midpointPrice.Nonce,
-	}
+	// Send the updated midpoint price to the boostrap nodes.
 	dispatch.CoForAll(bootstrapMultiAddresses, func(i int) {
 		multiAddr := bootstrapMultiAddresses[i]
-		conn, err := grpc.Dial(context.Background(), multiAddr)
-		if err != nil {
-			log.Println(fmt.Sprintf("cannot dial %v: %v", multiAddr.Address(), err))
-			return
-		}
-		defer conn.Close()
-		client := grpc.NewOracleServiceClient(conn)
+		client := grpc.NewOracleClient("", nil)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		_, err = client.UpdateMidpoint(ctx, &request)
+		err = client.UpdateMidpoint(ctx, multiAddr, midpointPrice)
 		if err != nil {
 			log.Println(fmt.Sprintf("cannot update midpoint for %v: %v", multiAddr.Address(), err))
 			return
 		}
 	})
 
-	return request, nil
+	return midpointPrice, nil
 }
 
 func serveResponse(w http.ResponseWriter, r *http.Request) {
