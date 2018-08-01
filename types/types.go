@@ -1,5 +1,21 @@
 package types
 
+type Config struct {
+	Currencies []Currency `json:"currencies"`
+	Pairs      []Pair     `json:"pairs"`
+}
+
+type Currency struct {
+	Symbol string `json:"symbol"`
+	ID     int32  `json:"id"`
+}
+
+type Pair struct {
+	FstSymbol string `json:"fstSymbol"`
+	SndSymbol string `json:"sndSymbol"`
+	PairCode  uint64 `json:"pairCode"`
+}
+
 // Types adapted from https://github.com/CoinCircle/go-coinmarketcap/blob/master/types/types.go
 
 type TickerResponse struct {

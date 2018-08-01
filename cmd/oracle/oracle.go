@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
 	"time"
 
@@ -19,33 +20,18 @@ import (
 	"github.com/rs/cors"
 )
 
-type currenciesConfig struct {
-	Currencies []currency `json:"currencies"`
-	Pairs      []pair     `json:"pairs"`
-}
-
-type currency struct {
-	Symbol string `json:"symbol"`
-	ID     int32  `json:"id"`
-}
-
-type pair struct {
-	FstSymbol string `json:"fstSymbol"`
-	SndSymbol string `json:"sndSymbol"`
-}
-
-type midpointData struct {
-	Price uint64 `json:"price"`
-	Nonce uint64 `json:"nonce"`
+type CurrencyPair struct {
+	fstSymbol string
+	sndSymbol string
 }
 
 const port int = 3000
 
 var cmcIDs map[string]int32
-var prices map[pair]midpointData
+var prices map[CurrencyPair]float64
 
 func main() {
-	var currenciesConfig currenciesConfig
+	var currenciesConfig types.Config
 
 	// Load configuration file containing currency and pair information.
 	file, err := ioutil.ReadFile("currencies/currencies.json")
@@ -70,13 +56,13 @@ func main() {
 
 	// Retrieve price information for each pair within the config file and
 	// propogate to clients.
-	prices = make(map[pair]midpointData)
+	prices = make(map[CurrencyPair]float64)
 	go func() {
 		for {
-			for _, pair := range currenciesConfig.Pairs {
-				res, err := http.DefaultClient.Get(fmt.Sprintf("https://api.coinmarketcap.com/v2/ticker/%d/?convert=%s", cmcIDs[pair.SndSymbol], pair.FstSymbol))
+			for _, configPair := range currenciesConfig.Pairs {
+				res, err := http.DefaultClient.Get(fmt.Sprintf("https://api.coinmarketcap.com/v2/ticker/%d/?convert=%s", cmcIDs[configPair.SndSymbol], configPair.FstSymbol))
 				if err != nil {
-					log.Println(fmt.Sprintf("cannot get price information for pair [%s, %s]: %v", pair.FstSymbol, pair.SndSymbol, err))
+					log.Println(fmt.Sprintf("cannot get price information for pair [%s, %s]: %v", configPair.FstSymbol, configPair.SndSymbol, err))
 					continue
 				}
 				defer res.Body.Close()
@@ -92,20 +78,24 @@ func main() {
 					log.Println(fmt.Sprintf("cannot unmarshal response: %v", err))
 					continue
 				}
-				prices[pair] = midpointData{
-					Price: uint64(cmcData.Data.Quotes[pair.FstSymbol].Price), // TODO: Fix price conversion
-					Nonce: uint64(time.Now().Unix()),
+
+				// Store price for GET requests.
+				pair := CurrencyPair{
+					fstSymbol: configPair.FstSymbol,
+					sndSymbol: configPair.SndSymbol,
 				}
+				price := cmcData.Data.Quotes[configPair.FstSymbol].Price
+				prices[pair] = price
 
 				// Construct midpoint price object and sign.
 				midpointPrice := oracle.MidpointPrice{
-					Tokens: 0, // TODO: Add tokens to config
-					Price:  prices[pair].Price,
-					Nonce:  prices[pair].Nonce,
+					Tokens: configPair.PairCode,
+					Price:  uint64(price * math.Pow10(12)),
+					Nonce:  uint64(time.Now().Unix()),
 				}
 				midpointPrice.Signature, err = envConfig.Keystore.EcdsaKey.Sign(midpointPrice.Hash())
 				if err != nil {
-					log.Println("cannot sign midpoint price data: %v", err)
+					log.Println(fmt.Sprintf("cannot sign midpoint price data: %v", err))
 					continue
 				}
 
@@ -179,21 +169,19 @@ func serveResponse(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Construct pair object.
-		pair := pair{
-			FstSymbol: fstSymbol,
-			SndSymbol: sndSymbol,
+		pair := CurrencyPair{
+			fstSymbol: fstSymbol,
+			sndSymbol: sndSymbol,
 		}
-		midpointData := prices[pair]
-		if midpointData.Price == 0 {
+		midpointPrice := prices[pair]
+		if midpointPrice == 0 {
 			w.WriteHeader(500)
 			w.Write([]byte("invalid currency pair"))
 			return
 		}
 
 		// Respond with price.
-		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		log.Println(midpointData)
-		json.NewEncoder(w).Encode(midpointData)
+		w.Write([]byte(fmt.Sprintf("%f", midpointPrice)))
 	}
 }

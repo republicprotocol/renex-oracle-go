@@ -20,15 +20,28 @@
     "pairs": [
         {
             "fstSymbol": "BTC",
-            "sndSymbol": "ETH"
+            "sndSymbol": "ETH",
+            "pairCode": 1
+        },
+        {
+            "fstSymbol": "BTC",
+            "sndSymbol": "DGX",
+            "pairCode": 256
+        },
+        {
+            "fstSymbol": "BTC",
+            "sndSymbol": "REN",
+            "pairCode": 65536
         },
         {
             "fstSymbol": "ETH",
-            "sndSymbol": "DGX"
+            "sndSymbol": "DGX",
+            "pairCode": 4294967552
         },
         {
             "fstSymbol": "ETH",
-            "sndSymbol": "REN"
+            "sndSymbol": "REN",
+            "pairCode": 4295032832
         }
     ]
 }
