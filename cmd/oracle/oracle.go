@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/republicprotocol/republic-go/crypto"
@@ -27,8 +28,6 @@ type currencyPair struct {
 	sndSymbol string
 }
 
-const port int = 3000
-
 var (
 	cmcIDs map[string]int32         // Map of a token symbol to its CMC ID
 	prices map[currencyPair]float64 // Map of a currency pair to its latest price
@@ -37,6 +36,13 @@ var (
 func main() {
 	cmcIDs = make(map[string]int32)
 	prices = make(map[currencyPair]float64)
+
+	// Load environment variables.
+	port := os.Getenv("PORT")
+	network := os.Getenv("NETWORK")
+	if network == "" {
+		log.Fatalln("cannot read network environment")
+	}
 
 	// Load configuration file containing currency and pair information.
 	file, err := ioutil.ReadFile("currencies/currencies.json")
@@ -49,7 +55,7 @@ func main() {
 	}
 
 	// Load configuration file containing environment information.
-	envConfig, err := config.NewConfigFromJSONFile(fmt.Sprintf("env/%v/config.json", "nightly")) // TODO: Retrieve network dynamically
+	envConfig, err := config.NewConfigFromJSONFile(fmt.Sprintf("env/%v/config.json", network)) // TODO: Retrieve network dynamically
 	if err != nil {
 		log.Fatalln(fmt.Sprintf("cannot load config file: %v", err))
 	}
@@ -112,6 +118,7 @@ func main() {
 }
 
 func retrievePrice(fstSymbol, sndSymbol string) (float64, error) {
+	// Retrieve the price for sndSymbol with respect to fstSymbol.
 	res, err := http.DefaultClient.Get(fmt.Sprintf("https://api.coinmarketcap.com/v2/ticker/%d/?convert=%s", cmcIDs[sndSymbol], fstSymbol))
 	if err != nil {
 		return 0, fmt.Errorf("cannot get price information for pair [%s, %s]: %v", fstSymbol, sndSymbol, err)
