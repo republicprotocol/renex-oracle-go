@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/republicprotocol/republic-go/crypto"
@@ -39,6 +40,7 @@ func main() {
 
 	// Load environment variables.
 	port := os.Getenv("PORT")
+	updateInterval := os.Getenv("INTERVAL") // The interval at which prices are retrieved from the CMC API.
 	network := os.Getenv("NETWORK")
 	if network == "" {
 		log.Fatalln("cannot read network environment")
@@ -93,8 +95,14 @@ func main() {
 			}
 			log.Println(fmt.Sprintf("TokenPairs: %v, Prices: %v, Nonce: %v", request.TokenPairs, request.Prices, request.Nonce))
 
-			// Check prices every 10 seconds.
-			time.Sleep(10 * time.Second)
+			// Check prices on interval specified using the environment
+			// variable (default: 10s).
+			var interval int
+			interval, err = strconv.Atoi(updateInterval)
+			if err != nil {
+				interval = 10
+			}
+			time.Sleep(time.Duration(interval) * time.Second)
 		}
 	}()
 
