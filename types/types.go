@@ -17,7 +17,6 @@ type Pair struct {
 }
 
 // CMC types adapted from https://github.com/CoinCircle/go-coinmarketcap/blob/master/types/types.go
-
 type TickerResponse struct {
 	Data     Ticker `json:"data"`
 	Metadata struct {

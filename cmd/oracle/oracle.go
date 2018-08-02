@@ -12,14 +12,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/republicprotocol/republic-go/crypto"
-	"github.com/republicprotocol/republic-go/dispatch"
-	"github.com/republicprotocol/republic-go/identity"
-
 	"github.com/gorilla/mux"
 	"github.com/republicprotocol/renex-oracle-go/types"
 	"github.com/republicprotocol/republic-go/cmd/darknode/config"
+	"github.com/republicprotocol/republic-go/crypto"
+	"github.com/republicprotocol/republic-go/dispatch"
 	"github.com/republicprotocol/republic-go/grpc"
+	"github.com/republicprotocol/republic-go/identity"
 	"github.com/republicprotocol/republic-go/oracle"
 	"github.com/rs/cors"
 )
@@ -68,7 +67,7 @@ func main() {
 	}
 
 	// Retrieve price information for each pair within the config file and
-	// propogate to clients.
+	// propagate to clients.
 	go func() {
 		for {
 			for _, configPair := range currenciesConfig.Pairs {
@@ -170,7 +169,7 @@ func sendPricesToDarknodes(pairs []types.Pair, bootstrapMultiAddresses identity.
 		return oracle.MidpointPrice{}, fmt.Errorf("cannot sign midpoint price data: %v", err)
 	}
 
-	// Send the updated midpoint price to the boostrap nodes.
+	// Send the updated midpoint price to the bootstrap nodes.
 	dispatch.CoForAll(bootstrapMultiAddresses, func(i int) {
 		multiAddr := bootstrapMultiAddresses[i]
 		client := grpc.NewOracleClient("", nil)
