@@ -55,7 +55,7 @@ func main() {
 	}
 
 	// Load configuration file containing environment information.
-	envConfig, err := config.NewConfigFromJSONFile(fmt.Sprintf("env/%v/config.json", network)) // TODO: Retrieve network dynamically
+	envConfig, err := config.NewConfigFromJSONFile(fmt.Sprintf("env/%v/config.json", network))
 	if err != nil {
 		log.Fatalln(fmt.Sprintf("cannot load config file: %v", err))
 	}
@@ -83,15 +83,15 @@ func main() {
 					sndSymbol: configPair.SndSymbol,
 				}
 				prices[pair] = price
-
-				// Send price information to bootstrap nodes.
-				request, err := sendPriceToDarknodes(configPair, price, envConfig.BootstrapMultiAddresses, envConfig.Keystore)
-				if err != nil {
-					log.Println(err)
-					continue
-				}
-				log.Println(fmt.Sprintf("Tokens: %v, Price: %v, Nonce: %v", request.Tokens, request.Price, request.Nonce))
 			}
+
+			// Send price information to bootstrap nodes.
+			request, err := sendPricesToDarknodes(currenciesConfig.Pairs, envConfig.BootstrapMultiAddresses, envConfig.Keystore)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			log.Println(fmt.Sprintf("TokenPairs: %v, Prices: %v, Nonce: %v", request.TokenPairs, request.Prices, request.Nonce))
 
 			// Check prices every 10 seconds.
 			time.Sleep(10 * time.Second)
@@ -138,13 +138,24 @@ func retrievePrice(fstSymbol, sndSymbol string) (float64, error) {
 	return cmcData.Data.Quotes[fstSymbol].Price, nil
 }
 
-func sendPriceToDarknodes(configPair types.Pair, price float64, bootstrapMultiAddresses identity.MultiAddresses, keystore crypto.Keystore) (oracle.MidpointPrice, error) {
+func sendPricesToDarknodes(pairs []types.Pair, bootstrapMultiAddresses identity.MultiAddresses, keystore crypto.Keystore) (oracle.MidpointPrice, error) {
+	// Formatting data for request.
+	var tokenPairs []uint64
+	for _, pair := range pairs {
+		tokenPairs = append(tokenPairs, pair.PairCode)
+	}
+
+	var pairPrices []uint64
+	for _, price := range prices {
+		pairPrices = append(pairPrices, uint64(price*math.Pow10(12)))
+	}
+
 	// Construct midpoint price object and sign.
 	var err error
 	midpointPrice := oracle.MidpointPrice{
-		Tokens: configPair.PairCode,
-		Price:  uint64(price * math.Pow10(12)),
-		Nonce:  uint64(time.Now().Unix()),
+		TokenPairs: tokenPairs,
+		Prices:     pairPrices,
+		Nonce:      uint64(time.Now().Unix()),
 	}
 	midpointPrice.Signature, err = keystore.EcdsaKey.Sign(midpointPrice.Hash())
 	if err != nil {
