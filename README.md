@@ -8,4 +8,12 @@ The RenEx Oracle retrieves pricing information from the CoinMarketCap API and se
 
 ## Configuration
 
-The supported currencies are defined in `currencies/currencies.json`. To add additional currencies, the symbol name, CoinMarketCap ID, as well as valid pairs must be defined. The Oracle will use the multi-addresses defined for the Bootstrap nodes in `env/<network>/config.json`. Currently, only the `nightly` network is supported.
+The supported currencies are defined in `currencies/currencies.json`. To add additional currencies, the symbol name, CoinMarketCap ID, as well as valid pairs must be defined. The Oracle will use the multi-addresses defined for the Bootstrap nodes in `env/<network>/config.json`. The network is specified as an environment variable in the Heroku deployment.
+
+> Note: currently, only the `nightly` network is supported.
+
+The price retrieval process occurs every 10 seconds by default, however this can also be configured using an environment variable.
+
+## REST API
+
+The REST API supports GET requests to `/prices?fst=<symbol>&snd=<symbol>`. This will return the price of the `snd` currency with respect to `fst`. For example, a request to `/prices?fst=BTC&snd=ETH` will return (price of `ETH`)/(price of `BTC`). If an invalid pair is specified, the response will be `0`.
