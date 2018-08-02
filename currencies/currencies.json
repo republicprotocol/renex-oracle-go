@@ -1,0 +1,47 @@
+{
+    "currencies": [
+        {
+            "symbol": "BTC",
+            "cmcID": 1
+        },
+        {
+            "symbol": "ETH",
+            "cmcID": 1027
+        },
+        {
+            "symbol": "REN",
+            "cmcID": 2539
+        },
+        {
+            "symbol": "DGX",
+            "cmcID": 2739
+        }
+    ],
+    "pairs": [
+        {
+            "fstSymbol": "BTC",
+            "sndSymbol": "ETH",
+            "pairCode": 1
+        },
+        {
+            "fstSymbol": "BTC",
+            "sndSymbol": "DGX",
+            "pairCode": 256
+        },
+        {
+            "fstSymbol": "BTC",
+            "sndSymbol": "REN",
+            "pairCode": 65536
+        },
+        {
+            "fstSymbol": "ETH",
+            "sndSymbol": "DGX",
+            "pairCode": 4294967552
+        },
+        {
+            "fstSymbol": "ETH",
+            "sndSymbol": "REN",
+            "pairCode": 4295032832
+        }
+    ]
+}
