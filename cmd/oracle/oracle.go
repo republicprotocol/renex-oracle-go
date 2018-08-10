@@ -29,13 +29,15 @@ type currencyPair struct {
 }
 
 var (
-	cmcIDs map[string]int32         // Map of a token symbol to its CMC ID
-	prices map[currencyPair]float64 // Map of a currency pair to its latest price
+	cmcIDs    map[string]int32        // Map of a token symbol to its CMC ID
+	pairCodes map[currencyPair]uint64 // Map of a currency pair to its pair-code
+	prices    map[uint64]uint64       // Map of a currency pair to its latest price
 )
 
 func main() {
 	cmcIDs = make(map[string]int32)
-	prices = make(map[currencyPair]float64)
+	pairCodes = make(map[currencyPair]uint64)
+	prices = make(map[uint64]uint64)
 
 	// Load environment variables.
 	port := os.Getenv("PORT")
@@ -79,20 +81,23 @@ func main() {
 				}
 
 				// Store price for GET requests.
+				prices[configPair.PairCode] = uint64(price * math.Pow10(12))
+
+				// Construct pair object and set pair-code.
 				pair := currencyPair{
 					fstSymbol: configPair.FstSymbol,
 					sndSymbol: configPair.SndSymbol,
 				}
-				prices[pair] = price
+				pairCodes[pair] = configPair.PairCode
 			}
 
 			// Send price information to bootstrap nodes.
-			request, err := sendPricesToDarknodes(currenciesConfig.Pairs, envConfig.BootstrapMultiAddresses, envConfig.Keystore)
+			request, err := sendPricesToDarknodes(envConfig.BootstrapMultiAddresses, envConfig.Keystore)
 			if err != nil {
 				log.Println(err)
 				return
 			}
-			log.Println(fmt.Sprintf("TokenPairs: %v, Prices: %v, Nonce: %v", request.TokenPairs, request.Prices, request.Nonce))
+			log.Println(fmt.Sprintf("Prices: %v, Nonce: %v", request.Prices, request.Nonce))
 
 			// Check prices on interval specified using the environment
 			// variable (default: 10s).
@@ -145,24 +150,12 @@ func retrievePrice(fstSymbol, sndSymbol string) (float64, error) {
 	return cmcData.Data.Quotes[fstSymbol].Price, nil
 }
 
-func sendPricesToDarknodes(pairs []types.Pair, bootstrapMultiAddresses identity.MultiAddresses, keystore crypto.Keystore) (oracle.MidpointPrice, error) {
-	// Formatting data for request.
-	var tokenPairs []uint64
-	for _, pair := range pairs {
-		tokenPairs = append(tokenPairs, pair.PairCode)
-	}
-
-	var pairPrices []uint64
-	for _, price := range prices {
-		pairPrices = append(pairPrices, uint64(price*math.Pow10(12)))
-	}
-
+func sendPricesToDarknodes(bootstrapMultiAddresses identity.MultiAddresses, keystore crypto.Keystore) (oracle.MidpointPrice, error) {
 	// Construct midpoint price object and sign.
 	var err error
 	midpointPrice := oracle.MidpointPrice{
-		TokenPairs: tokenPairs,
-		Prices:     pairPrices,
-		Nonce:      uint64(time.Now().Unix()),
+		Prices: prices,
+		Nonce:  uint64(time.Now().Unix()),
 	}
 	midpointPrice.Signature, err = keystore.EcdsaKey.Sign(midpointPrice.Hash())
 	if err != nil {
@@ -208,10 +201,13 @@ func serveResponse(w http.ResponseWriter, r *http.Request) {
 			fstSymbol: fstSymbol,
 			sndSymbol: sndSymbol,
 		}
-		midpointPrice := prices[pair]
+		if _, ok := pairCodes[pair]; !ok {
+			return
+		}
+		midpointPrice := prices[pairCodes[pair]]
 
 		// Respond with price.
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fmt.Sprintf("%f", midpointPrice)))
+		w.Write([]byte(fmt.Sprintf("%d", midpointPrice)))
 	}
 }
